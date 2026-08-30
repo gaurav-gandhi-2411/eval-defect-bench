@@ -1,0 +1,60 @@
+{"id": "Q01", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q02", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q03", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q04", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q05", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q06", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q07", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q08", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q09", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q10", "verdict": "YES", "triggering_input": "actual_invocations has more elements than a supplied expected_invocations list (e.g. the agent produced extra turns beyond the scripted/expected invocations)", "wrong_output": "the trailing actual invocations with no zip counterpart are silently dropped, and the returned EvaluationResult (score/EvalStatus such as PASSED) is computed only from the truncated subset while appearing to be a complete evaluation of the whole conversation", "mechanism": "no validation that len(expected_invocations) == len(actual_invocations) before zip(), so zip silently truncates to the shorter list instead of raising or padding"}
+{"id": "Q11", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q12", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q13", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q14", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q15", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q16", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q17", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q18", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q19", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q20", "verdict": "YES", "triggering_input": "An eval_set whose eval cases collection is empty (or otherwise yields an empty eval_results_by_eval_id mapping), so the per-eval-id loop body that appends to failures never executes.", "wrong_output": "The function returns normally with no AssertionError raised, i.e. it reports overall success (silently passing) even though zero eval cases were actually evaluated.", "mechanism": "failures is only populated inside the for-loop over eval_results_by_eval_id.items(); if that mapping is empty the loop body never runs, failures stays an empty list, and the final `assert not failures, failure_message` is a vacuous truth that passes regardless of whether any real evaluation happened, which is a silent false-positive pass rather than a loud error."}
+{"id": "Q21", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q22", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q23", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q24", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q25", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q26", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q27", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q28", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q29", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q30", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q31", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q32", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q33", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q34", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q35", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q36", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q37", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q38", "verdict": "YES", "triggering_input": "list_eval_sets is called with an app_name whose prefix directory was never created in the GCS bucket (no blobs exist under that prefix at all)", "wrong_output": "The function returns an empty list [] (looking like a valid app with zero eval sets) instead of raising NotFoundError for a nonexistent app", "mechanism": "GCS's bucket.list_blobs(prefix=...) never raises NotFound for a prefix that matches zero objects -- it simply yields an empty iterator -- so the except cloud_exceptions.NotFound block is effectively dead code for this case, and a nonexistent app silently looks identical to an existing app with no eval sets"}
+{"id": "Q39", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q40", "verdict": "YES", "triggering_input": "per_invocation_samples where the number of score==1.0 results equals the number of score==0.0 results (a genuine tie, e.g. 2 positive and 2 negative samples out of several)", "wrong_output": "The function returns negative_results[0], a definitive, valid-looking score==0.0 (fail) result", "mechanism": "The docstring explicitly states a tie should be treated as invalid, but the code only branches on `len(positive_results) > len(negative_results)`; the else branch catches both the genuine negative-majority case and the tie case identically, so a tie is silently reported as a confident negative/fail verdict rather than an invalid/inconclusive one"}
+{"id": "Q41", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q42", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q43", "verdict": "YES", "triggering_input": "get_eval_set is called with an app_name/eval_set_id pair for which an EvalSet actually exists", "wrong_output": "The function implicitly returns None (since its body contains only a docstring and no implementation/return statement), which looks like a legitimate 'eval set not found' answer per its Optional[EvalSet] return type", "mechanism": "The function body is just a docstring string literal acting as a no-op statement, with no lookup logic and no return statement, so Python's implicit `return None` fires unconditionally regardless of whether the eval set exists, and None is indistinguishable from a genuine not-found result to any caller"}
+{"id": "Q44", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q45", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q46", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q47", "verdict": "YES", "triggering_input": "A run where the judge model's generate_content_async yields zero response chunks for one or more (but not all) invocations across every sample attempt, e.g. due to content filtering, while other invocations succeed normally.", "wrong_output": "Those invocations are silently dropped (via the bare continue on empty invocation_result_samples) and excluded from per_invocation_results, so the returned EvaluationResult's overall aggregate/status looks like a complete evaluation of all invocations when some were never scored at all.", "mechanism": "The if not invocation_result_samples: continue branch has no error, warning, or placeholder result, so aggregate_invocation_results silently computes the final verdict from a partial subset of invocations with no signal that coverage was incomplete."}
+{"id": "Q48", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q49", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q50", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q51", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q52", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q53", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q54", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q55", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q56", "verdict": "YES", "triggering_input": "Auto-rater response text is empty, malformed (does not match the Property/Rationale/Verdict format), or its parsed rubric property texts do not normalize-match any rubric in get_effective_rubrics_list (e.g. due to LLM phrasing drift), so rubric_responses or all matches are empty.", "wrong_output": "rubric_scores ends up as an empty list, and get_average_rubric_score([]) is called unconditionally, producing an AutoRaterScore with a concrete numeric score (plausibly a default like 0.0) and empty rubric_scores that is indistinguishable from a legitimately fully-failing rubric evaluation.", "mechanism": "The empty/no-match cases are only logged as warnings, never surfaced in the returned AutoRaterScore or treated specially before computing the average, so downstream threshold-based eval_status logic cannot distinguish a genuine failing score from a parsing/matching failure that produced zero actual rubric evaluations."}
+{"id": "Q57", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q58", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q59", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}
+{"id": "Q60", "verdict": "NO", "triggering_input": null, "wrong_output": null, "mechanism": null}

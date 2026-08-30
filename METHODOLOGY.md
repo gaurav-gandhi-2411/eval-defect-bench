@@ -1,0 +1,291 @@
+# Methodology: three attempts at automated "verdict silently degrades" defect detection
+
+This document covers a full investigation arc, written for someone who did not run any of it
+themselves. The target defect class throughout: a function that computes a status, verdict, score,
+or exit code that *looks* valid but silently misrepresents what actually happened (as opposed to
+crashing loudly, which is a different, much easier-to-detect failure mode).
+
+Three approaches were tried in sequence against real code in `google/adk-python`'s
+`evaluation/` subsystem. All three are now closed avenues for this specific problem, with the
+evidence trail below preserved so a future attempt starts from what's already known rather than
+repeating it.
+
+## Attempt 1 — AST-based syntactic pattern matching
+
+**What it was:** `scripts/archive/scan_verdict_defects.py`, five hand-built detectors using Python's
+`ast` module (not regex) to look for five specific code shapes: an enum-valued function that never
+produces every member of its own enum (`D1`), a hardcoded `>=`/`<=` comparison against a
+threshold with no polarity/direction variable in scope (`D2`), a loop or comprehension that writes
+to a results accumulator only inside a conditional with no else/except placeholder (`D3`), a
+success-like default that only gets reassigned conditionally before being returned (`D4`), and a
+CLI command that can complete without ever calling `sys.exit` on a failure path (`D5`).
+
+**Training-set result:** 3 of the 4 real bugs the detectors were hand-built from were correctly
+re-flagged (75%).
+
+**Why that number means nothing on its own:** measuring recall on the exact examples a detector was
+designed to catch measures memorization of those examples, not generalization to new ones. This is
+the single most important lesson from this whole investigation, repeated in a different form in
+Attempt 2 below: **a detector's performance on its own design examples is not a validation
+experiment — it needs a separate, held-out test set collected independently of the detector's
+construction.**
+
+**Held-out result:** against 30 real, independently-sourced bug-fix commits to the same subsystem
+from the prior 12 months (chosen chronologically, not cherry-picked, authored by people other than
+whoever built the detector), the scanner caught **0 of 30 (0%)**. Even restricted to the 3 commits
+whose bug mechanism genuinely matched one of the 5 target shapes, it still caught **0 of 3**.
+
+**Three documented near-misses, useful for anyone attempting a v2:**
+1. A textbook `D3` (silent-drop) shape was missed because the loop's accumulator variable was named
+   `rubric_scores` — outside the naming heuristic, which only matched `result`/`output`-containing
+   names. **Lesson: naming heuristics for "this looks like a results collection" need to be much
+   broader, or replaced with a data-flow check (does this variable eventually get returned/used as
+   the function's output?) instead of pattern-matching its name.**
+2. A function whose real defect was "never returns one specific enum member under a numerically
+   degenerate input" was missed because that member only appeared in a *comparison* inside the
+   function, never in an assignment or return statement — which is what the detector's AST walk was
+   watching for. **Lesson: track a variable's possible *values* through the function (a lightweight
+   abstract-interpretation pass), not just literal enum-member tokens appearing in specific AST node
+   types.**
+3. A wrongful exclusion happened inside a **list comprehension**, not a `for`/`while` loop — a
+   different AST node shape than what the loop-body detector was watching. **Lesson: comprehensions
+   and generator expressions need first-class handling, not just an afterthought case of "loops."**
+
+**Conclusion:** syntactic pattern matching, at least in the form attempted here, cannot reliably
+capture this class of *semantic* defect. The bug isn't in any single syntactic shape — it's in
+whether a function's actual branch coverage matches its own intended contract, and recognizing that
+requires understanding intent, which AST structure alone doesn't encode. The scanner is retired to
+`scripts/archive/` with its full source preserved.
+
+## Attempt 2 — Multi-model local LLM consensus
+
+**What it was:** `scripts/llm_defect_detector.py`, sending each of 60 benchmark functions (30 real
+bug-fix positives + 30 verified-untouched controls — see `benchmark/eval_defects.jsonl` and
+`benchmark/README.md`) to three different local Ollama model families (Llama, Gemma, Qwen), blind
+(function source only, no filename/commit/label), and taking a majority vote.
+
+**Raw numbers, as first measured:** consensus recall 53.3% (16/30), consensus false-positive rate
+43.3% (13/30).
+
+**Why those numbers were themselves defective — three separate measurement flaws, not one:**
+
+1. **A degenerate rater poisons a majority vote silently.** One of the three models answered "NO"
+   on all 60 items with zero exceptions — it contributed no information at all. This didn't show up
+   as an obvious failure in the raw recall/FPR numbers; those looked plausible. It only became
+   visible by computing **Fleiss' kappa across all three raters, which came out at -0.128** — worse
+   than chance agreement. A "3-model consensus" with one inert rater is actually a 2-rater AND
+   between two other models, and if those two share a correlated bias (here, both leaned heavily
+   toward YES on almost everything — one alone had a 70% false-positive rate by itself), the
+   resulting "consensus" looks like agreement but is actually two biased opinions dressed up as
+   independent confirmation. **Lesson: always compute inter-rater agreement before trusting a
+   consensus number, and treat a rater that never varies its answer as a red flag requiring
+   removal or investigation, not as one vote among equals.**
+
+2. **The control set measured the wrong thing.** "No bug fix landed against this function in 12
+   months" is not the same claim as "this function has no defects" — it only means nobody happened
+   to find and fix one in that window, for any reason (nobody looked, it's rarely exercised, the
+   defect is real but nobody hit it yet). Adjudicating the 13 controls that got flagged by hand
+   (reading each against the live repository) found that 2 of the 13 were **genuine, real defects**
+   that simply hadn't been fixed yet — not false positives at all. Recomputing the false-positive
+   rate using only the confirmed genuine false alarms (11, not 13) brought it down from 43.3% to
+   36.7% — a real but modest correction, and nowhere near enough to rescue the local-model result on
+   its own. **Lesson: an "unfixed" control set will always contain some real defects; a spot-check
+   adjudication of anything flagged as a false positive is not optional if you plan to report a
+   false-positive rate as if it were ground truth.**
+
+3. **Binary YES/NO scoring on a task that's 50% guessable can't distinguish signal from bias.** A
+   detector that says YES to almost everything gets a high recall number "for free," and the
+   headline recall (53.3%) looked almost respectable in isolation — until the actual content of the
+   "correct" answers was read. **Zero of the 32 individual YES votes on real bugs named the actual
+   historical defect mechanism** (0/32 exact localization); most named a plausible-sounding but
+   unrelated concern. A YES/NO score cannot tell the difference between "found the real bug" and
+   "guessed YES and happened to be scored as a hit." **Lesson: for this kind of task, localization
+   quality (did it name the actual mechanism, not just get the binary label right) is the metric
+   that matters; treat bare recall/precision as secondary, easily-gamed numbers.**
+
+**Corrected conclusion:** balanced accuracy 55%, d-prime ≈0.25 (near-chance; for reference, d′=0
+is pure guessing) — this licenses the narrow claim "these three small local models produced no
+usable discriminative signal on this task." It does **not** license "LLM-based detection of this
+defect class is closed" — the raters tested were small (7-9B parameter), locally hosted, and one
+was fully non-participating; a materially stronger single judge had not yet been tried at the point
+this conclusion would otherwise have been drawn.
+
+## Attempt 3 — Single frontier-model judge, scored on localization not YES/NO
+
+**What it was:** the same 60-item benchmark, but judged by a single frontier-capability model
+(Claude), genuinely blind — a fresh dispatch with zero access to any of this investigation's prior
+context, given only shuffled, anonymized function bodies with no commit/file/label metadata, split
+into four independent batches of 15 so no batch's answers could inform another's. Scored primarily
+on **localization** (did the stated trigger match the real historical defect's actual mechanism:
+EXACT / ADJACENT / WRONG), not on raw YES/NO recall, per the lesson above.
+
+**Results:** of 30 positives, 4 were flagged YES (13.3% raw recall). Confusion matrix over all 60:
+TP=4, FN=26, FP=3, TN=27 (raw); FP=2, TN=28 after control adjudication (below).
+
+**A first pass scored localization strictly against "the mechanism the specific historical commit
+fixed"** and found 2 EXACT matches (a `zip()`-without-`strict` truncation, and a silently-empty
+rubric-score list feeding an average as if it were a complete evaluation), 1 ADJACENT, and 1 WRONG
+— **EXACT localization: 2/30 = 6.7%.**
+
+**That strict ground truth turned out to be mis-specified, and re-adjudicating the 2 non-EXACT
+positives against the actual code (not just the one commit each was paired with) changed the
+count.** Reading both flagged functions at their exact benchmarked parent commit:
+- The "ADJACENT" item (`AgentEvaluator.evaluate_eval_set`) — the judge's stated trigger (an empty
+  `eval_results_by_eval_id` mapping causing `assert not failures` to pass vacuously) is **verified
+  present** in the function's actual source at that parent commit, and remains present, unfixed, on
+  the current `origin/main` tip (line 289 of the current file, same `for ... items(): ... assert
+  not failures` shape). It shares the exact downstream failure mode as the commit's real fix (a
+  crashed inference case emptying one entry vs. an empty eval set emptying the whole mapping) but
+  is a genuinely different, independently reproducible trigger.
+- The "WRONG" item (`LlmAsJudge.evaluate_invocations`) — the judge's stated trigger (a zero-sample
+  invocation silently dropped via a bare `continue`, never entering the results list) is **verified
+  present**, verbatim, in the function's actual source at that exact parent commit (`if not
+  invocation_result_samples: continue`) — a real defect, just not the "deprecated threshold source"
+  bug the paired commit happened to be fixing. This is the same underlying gap already tracked and
+  fixed by a separate, already-open PR in this same investigation (not a new finding).
+
+**Reclassifying both as REAL_OTHER (a genuine, verified, different defect in the same function,
+with a stated triggering input and wrong output) rather than ADJACENT/WRONG: corrected localization
+is EXACT=2, REAL_OTHER=2, SPURIOUS=0 — every single positive this judge flagged YES on corresponded
+to a real, verifiable defect (4/4, 100%), even though only half matched the specific commit it was
+paired with. Both numbers are reported, not just the more favorable one: strict EXACT is 6.7%
+(2/30); EXACT+REAL_OTHER is 13.3% (4/30) — identical to raw recall, because zero flagged positives
+were spurious.**
+
+**The central methodological lesson of this whole arc:** ground-truthing "the defect" as "whatever
+the paired historical commit happened to fix" conflates two different questions — *did the judge
+explain why this specific commit exists* (a narrow, commit-level question) versus *did the judge
+correctly discriminate a genuinely buggy function from a clean one* (the actual capability being
+measured). A judge that finds a real, different bug in the same function is not wrong about the
+function — it's wrong about which bug the benchmark happens to be pointing at. Any future benchmark
+for this defect class should score at the function level ("is there a genuine defect here, matching
+what was found, yes/no") as the primary metric, with "does it match the specific paired commit" as
+a secondary, stricter statistic — not the other way around, and never as the only number reported.
+
+Of 30 controls, 3 were flagged YES (10% raw false-positive rate). Hand-adjudicating those 3 the same
+way as Attempt 2's controls: 1 was a genuine defect (independently corroborating, via an entirely
+different mechanism — a tie-breaking edge case — a function already known from Attempt 2's own
+control adjudication to be defective), and 2 were confirmed false alarms after checking the actual
+code semantics (one rested on a Google Cloud Storage API behavior that doesn't actually occur the
+way the model assumed; one rested on calling a properly `@abstractmethod`-enforced method in a way
+Python's `abc` module already prevents — verified directly against the class declaration).
+**Adjudicated false-positive rate: 2/30 = 6.7%.**
+
+**Discrimination, computed both ways and compared fairly against Attempt 2 (this is the number a
+prior pass omitted, making the "better discrimination" claim unsupported in either direction):**
+
+| | Recall | FPR | Balanced accuracy | d-prime |
+|---|---|---|---|---|
+| Local consensus, raw | 53.3% | 43.3% | 55.0% | 0.25 |
+| Local consensus, adjudicated FPR | 53.3% | 36.7% | 58.3% | 0.42 |
+| Frontier judge, raw | 13.3% | 10.0% | 51.7% | 0.17 |
+| Frontier judge, adjudicated FPR | 13.3% | 6.7% | 53.3% | 0.39 |
+
+**Once fairly compared, the frontier judge does not clearly out-discriminate the local-model
+consensus** — its d-prime (0.39 adjudicated) is not higher than the local consensus's own adjudicated
+d-prime (0.42); both sit in the same "barely above chance" band (for reference, d′=0 is pure
+guessing, d′=1 is often treated as a weak-but-real floor in signal detection theory — neither
+approach clears it). What changed between the two attempts is not net discrimination but where each
+sits on the recall/precision tradeoff: the frontier judge traded most of its recall for a much lower
+false-alarm rate. Both are honestly "does not meaningfully discriminate at the whole-population
+level," independent of the mechanism-naming question addressed above.
+
+**Contamination check, scoped honestly:** every one of the 30 positive commits has a `fix_date`
+between 2026-05-15 and 2026-08-26 (confirmed directly against `benchmark/eval_defects.jsonl`).
+**What was actually verified:** this frontier judge's own stated training cutoff (January 2026)
+predates that entire range, checked directly — for this specific baseline, the positive set does
+postdate the judge's cutoff. **What was not verified:** nothing here establishes anything about the
+Attempt 2 local Ollama models (`llama3.1:8b`, `gemma2:9b`, `qwen2.5:7b`) — their actual training-data
+cutoffs were never checked against these dates, in this section or anywhere else in this
+investigation. A reader evaluating a different model against this benchmark should check that
+model's own stated cutoff against each record's individual `fix_date`, rather than assume a
+blanket "contamination-free" claim extends to it.
+
+**Decision gate 1 (mechanism-naming), applied as pre-registered:** EXACT localization ≥40% AND
+adjudicated FPR ≤20% → VIABLE, otherwise NOT VIABLE.
+```
+EXACT localization: 6.7% >= 40%  → FALSE
+Adjudicated FPR:      6.7% <= 20%  → TRUE
+Gate: FALSE AND TRUE → NOT VIABLE
+```
+
+**Decision gate 2 (triage — ranking functions for human review, not explaining them), applied
+separately:** balanced accuracy ≥70% AND adjudicated FPR ≤15% → TRIAGE_VIABLE, otherwise CLOSED.
+```
+Balanced accuracy: 53.3% >= 70%  → FALSE
+Adjudicated FPR:     6.7% <= 15%  → TRUE
+Gate: FALSE AND TRUE → CLOSED
+```
+Both gates fail, for different and complementary reasons: mechanism-naming fails because EXACT
+matches are rare even when the judge is right about something being wrong; triage fails because
+recall is far too low (13.3%) for a tool meant to flag most real issues for a human to review, even
+though its false-alarm rate when it does flag something is excellent.
+
+**What this attempt licenses concluding:** a single frontier-capability judge, given an isolated
+function body and asked directly, is highly precise but very conservative — when it says YES, it
+was right about a real defect existing 100% of the time in this sample (n=4, too small to trust as
+a stable rate, but directionally clean); when it says NO, it is very often wrong (it missed 26 of
+30 real defects). It does not meaningfully out-discriminate a multi-model local consensus in
+aggregate signal-detection terms, and it cannot reliably name the *specific* mechanism a real
+historical bug fix addressed, even genuinely blind and (for this specific judge's own verified
+cutoff, per the contamination check above) contamination-free. What's foreclosed by
+this result is the narrow claim "a frontier model, given an isolated function body and asked
+directly, reliably identifies or names this defect class's real cause, or catches most instances of
+it." What remains untested and open: whether more context (full file/class rather than an isolated
+function), a different prompt, or an ensemble of frontier judges would move the recall number,
+since the one clean signal here (zero spurious YES votes) suggests the model's precision is
+trustworthy even if its coverage isn't.
+
+## Summary for future reference
+
+| Approach | Recall (raw) | Adjudicated FPR | EXACT localization | EXACT+REAL_OTHER | Verdict |
+|---|---|---|---|---|---|
+| AST scanner, training-set | 75% (3/4) | — | — | — | Invalid measurement (overfit to design set) |
+| AST scanner, held-out | 0% (0/30) | — | — | — | NOT VIABLE |
+| Local LLM consensus (3 small models) | 53.3%* | 36.7% | 0% (0/32 votes) | not re-scored | NOT VIABLE (kappa -0.128, degenerate rater) |
+| Frontier single judge, blind | 13.3% | 6.7% | 6.7% (2/30) | 13.3% (4/30) | NOT VIABLE (both gates — mechanism-naming and triage) |
+
+\* Local-model recall is not comparable to the frontier judge's — it reflects a majority vote
+dominated by two positively-correlated, high-false-alarm raters, not genuine discrimination; see
+Attempt 2's kappa finding.
+
+Two artifacts remain independently useful regardless of the closed detector question: the benchmark
+itself (`benchmark/eval_defects.jsonl`, 30 verified positives + 30 verified controls, reusable
+against any future approach — see `benchmark/README.md` for schema and how to run/score a new
+detector against it), and the concrete list of real, verified findings this arc turned up in
+currently-live code while adjudicating the judges' answers, not from the detectors themselves:
+- Two are known-and-already-being-fixed (the `num_samples=0`/`get_eval_status` polarity and
+  `aggregate_per_invocation_samples` bucketing gaps from Attempt 2's control adjudication) — one has
+  an open PR already; neither is reachable via any real shipped call path, so neither was filed as a
+  new issue.
+- One is **new, live, and reachable via a real call path, found during Attempt 3's re-adjudication**:
+  `AgentEvaluator.evaluate_eval_set` (`src/google/adk/evaluation/agent_evaluator.py`, confirmed
+  still present at line 289 of `origin/main` as of this writing) silently reports overall success
+  when `eval_results_by_eval_id` is empty for any reason (an eval set with zero eval cases is the
+  most direct trigger) — `assert not failures` passes vacuously since the loop that would populate
+  `failures` never runs. Not filed or patched; flagged here as a genuine contribution candidate
+  pending the pre-flight recency/churn check documented elsewhere in this workspace's `CLAUDE.md`.
+
+## Licensing position on the benchmark's contents
+
+`benchmark/eval_defects.jsonl` stores raw, unmodified function-body excerpts extracted directly from
+`google/adk-python`, which is licensed Apache License 2.0 (confirmed: every source file in that
+repository carries a `Copyright 2026 Google LLC` / `Licensed under the Apache License, Version 2.0`
+header). Each benchmark record carries `repo`, `commit_sha`, and `file` provenance fields, so the
+origin of any given excerpt is traceable — but **no copyright notice, license text, or NOTICE file
+is currently embedded in the benchmark itself**, and the extracted excerpts do not carry the
+originating file's own license header (only the function body, not the file, was extracted).
+
+**This is not neutral, and should not be assumed fine by default.** Apache-2.0 §4 conditions
+redistribution of the Work (or Derivative Works) on: (a) providing recipients a copy of the License,
+(c) retaining all copyright, patent, trademark, and attribution notices from the Source form of the
+Work, and (d) if the Work's distribution includes a NOTICE file, reproducing its attribution notices
+in any Derivative Works distributed. A private, local research artifact used only within this
+workspace is very unlikely to constitute "distribution" in the sense the license means. **If this
+benchmark is ever published, shared outside this workspace, or committed to a public repository,
+it does not currently satisfy §4 as constructed** — the fix is straightforward: add a top-level
+`NOTICE`/`LICENSE-THIRD-PARTY` file citing `google/adk-python`'s copyright and Apache-2.0 license,
+and either embed the same short attribution per-record or point to the single top-level notice. This
+should happen before any public redistribution, not be assumed already covered by the existing
+per-record `commit_sha`/`file` provenance fields, which establish origin but do not themselves
+satisfy the license's notice-retention requirement.

@@ -1,0 +1,77 @@
+eval_defects benchmark
+Copyright 2026 the benchmark's author
+
+This artifact incorporates source-code excerpts extracted from:
+
+  google/adk-python
+  https://github.com/google/adk-python
+
+which is copyright:
+
+  Copyright 2026 Google LLC
+
+and licensed under the Apache License, Version 2.0. The following is a summary
+of the license's terms as they apply to this redistribution; the full license
+text is available at http://www.apache.org/licenses/LICENSE-2.0 and is also
+reproduced in this directory's LICENSE-THIRD-PARTY file.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+## What is derived from google/adk-python
+
+All 60 records in `eval_defects.jsonl` (30 `label: positive` + 30 `label:
+control`) carry `repo: "google/adk-python"` and store, verbatim, a raw
+function/method/class body excerpt from that repository's source (the
+`pre_fix_source` field) — confirmed by checking the `repo` field's value
+distribution across all 60 records (60/60 = `google/adk-python`, no other
+value present).
+
+This repository additionally ships raw evidence backing `METHODOLOGY.md`'s and
+`results/*.md`'s claimed numbers, under `benchmark/raw/`:
+`llm_detector_results.jsonl` (all 195 raw per-model local-LLM responses),
+`frontier_judge_answers.jsonl` (all 60 raw frontier-judge responses),
+`blinding_key.jsonl` (the anonymized-ID-to-real-record mapping used to score
+the blind judging — every field in it is already disclosed in the clear in
+`benchmark/eval_defects.jsonl`; this file exists only to let a reader
+reproduce the scoring pipeline, not to disclose anything new), and
+`control_verification_log.json` (every zero-touch check run while building
+the 30 controls, accepted or not).
+
+`frontier_judge_answers.jsonl` and `METHODOLOGY.md` quote short (single-line)
+verbatim code fragments from the same underlying google/adk-python excerpts
+inside free-text explanation fields (e.g. `assert not failures`, `if not
+invocation_result_samples: continue`) — these are short quotations of the
+same already-attributed source, not independent third-party inclusions, and
+are likewise covered by this NOTICE.
+
+`llm_detector_results.jsonl`, `blinding_key.jsonl`, and
+`control_verification_log.json` do not themselves contain google/adk-python
+source excerpts (verified: no `pre_fix_source`/`source` field holding a full
+excerpt, and no verbatim multi-line code echoed in any free-text field).
+
+## What this repository's own files add
+
+`README.md`, `METHODOLOGY.md`, `TAXONOMY.md`, `control_verification_log.json`,
+`llm_detector_results.jsonl`, `frontier_judge_answers.jsonl`,
+`blinding_key.jsonl`, and `scripts/` are original work product of this
+benchmark's construction (extraction tooling, detector outputs, adjudication
+notes, and analysis) and are not themselves google/adk-python source, except
+for the short verbatim fragments noted above.
+
+## Attribution retained per Apache License 2.0 Section 4
+
+Any redistribution of this benchmark, in whole or in part, that includes the
+google/adk-python-derived excerpts listed above must retain: (a) a copy of
+the Apache License, Version 2.0 (see LICENSE-THIRD-PARTY in this directory),
+(b) the copyright notice "Copyright 2026 Google LLC", and (c) this NOTICE
+file's attribution statements, per Apache-2.0 Section 4(c) and 4(d).
