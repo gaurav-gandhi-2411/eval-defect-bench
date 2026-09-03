@@ -266,6 +266,49 @@ currently-live code while adjudicating the judges' answers, not from the detecto
   `failures` never runs. Not filed or patched; flagged here as a genuine contribution candidate
   pending the pre-flight recency/churn check documented elsewhere in this workspace's `CLAUDE.md`.
 
+## Near-miss: a candidate that was investigated and correctly rejected
+
+Not every function that produces `NaN`/`inf` with no exception is this benchmark's target defect
+class. One candidate from adjacent OSS work (`keras-team/keras`, outside this benchmark's own
+`google/adk-python` scope, recorded here purely as a methodology artifact) is worth writing down
+precisely because it looked like a fit and was investigated to the same evidentiary standard as a
+real finding before being rejected — this is what "what does NOT count as silent degradation"
+looks like in practice, not just in the abstract.
+
+**Candidate:** `R2Score.result` (`keras/src/metrics/regression_metrics.py:535`, pinned
+`origin/master` `15a11018cff3670dd5746800fcce2b31b253b25a`) —
+`raw_scores = 1 - (self.total_mse / total)` is a tensor division with no exception path. Verified
+directly (not reasoned about) that a `NaN` in `y_pred` (e.g. a diverged model) propagates all the
+way to `R2Score.result() == NaN` with no exception, on a **normal-variance** input
+(`total = 2.0`, nonzero) — mechanically distinct from `keras-team/keras#23420`'s own target
+(the zero-variance `total == 0` case). Re-ran the identical repro against `#23420`'s own PR branch
+and confirmed the patch does **not** close this path either — same `NaN` result, no exception,
+both before and after.
+
+**Why this was rejected, not filed:** `#23420`'s own diff adds
+`test_r2_nan_total_mse_propagates`, asserting `reference_result=float("nan")` for exactly this
+input — the PR's author explicitly locked in `NaN`-passthrough as the *intended* behavior for a
+`NaN`-contaminated input, not an oversight. And this isn't `R2Score`-specific: every Keras metric
+built on IEEE754 tensor ops passes `NaN` through the same way (a `NaN` numerator anywhere in a
+computation graph propagates as `NaN`, full stop, across every backend). Filing this as a
+`R2Score`-specific "silent degradation" defect would be indistinguishable from filing "floating
+point division doesn't raise `ZeroDivisionError`" as a bug — technically true of the mechanism,
+but not a defect in this function relative to its own contract or its neighbors' behavior.
+
+**The distinguishing test, stated generally:** this benchmark's target class is a function that
+produces a *plausible-looking, wrong* verdict with no signal that anything went wrong — not a
+function whose output faithfully reflects genuinely-invalid input via a well-understood, universal
+convention (`NaN` in → `NaN` out is IEEE754, not a bug). A `NaN` result is not "plausible" the way
+a spuriously-passing exit code or a silently-dropped enum member is — most downstream consumers
+either propagate it visibly or crash on the first comparison/format operation that touches it. The
+zero-variance `0/0` case `#23420` actually fixes is different in exactly this respect: pre-patch,
+it silently returned a **plausible, wrong, finite** score (`NaN` formatted and logged as if it
+were a real number, or worse — see `#23420`'s own before-state, which the PR's title names
+directly) for a case sklearn's own reference implementation defines a specific finite answer for
+(`force_finite=True`, defaulting to `1.0`). That gap between "a defined correct finite answer
+exists and this function doesn't produce it" versus "the input was genuinely invalid and `NaN` is
+the standard, expected propagation" is the actual line this benchmark's target class sits on.
+
 ## Licensing position on the benchmark's contents
 
 `benchmark/eval_defects.jsonl` stores raw, unmodified function-body excerpts extracted directly from
