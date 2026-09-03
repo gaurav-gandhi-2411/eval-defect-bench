@@ -109,9 +109,9 @@ automate (see the script's docstring).
 ## Defect taxonomy
 
 The 30 positive commits, plus 5 of the author's own external OSS PRs and one filed issue, were
-classified by underlying mechanism (not surface symptom) into 11 shapes. Full detail, canonical
-`file:line` examples, and per-shape detector performance: [`TAXONOMY.md`](./TAXONOMY.md). The
-external cross-references, for independent verification:
+classified by underlying mechanism (not surface symptom). Full detail, canonical `file:line`
+examples, and per-shape detector performance: [`TAXONOMY.md`](./TAXONOMY.md). The external
+cross-references, for independent verification:
 [adk-python#6740](https://github.com/google/adk-python/pull/6740),
 [#6739](https://github.com/google/adk-python/pull/6739),
 [#6710](https://github.com/google/adk-python/pull/6710)→[#6939](https://github.com/google/adk-python/pull/6939),
@@ -119,26 +119,28 @@ external cross-references, for independent verification:
 [keras#23420](https://github.com/keras-team/keras/pull/23420),
 [adk-python#6951](https://github.com/google/adk-python/issues/6951).
 
+**In-class coverage (silent verdict degradation, the benchmark's actual target class): 15/30
+(50%)**, across 3 primary shapes, all n≥4. This replaces an earlier 11-shape version of this table
+that mixed a loud-crash family in as a fourth peer shape and inflated in-class coverage to 63%.
+
 | Shape | Benchmark count (/30) | External match |
 |---|---|---|
-| 1. Empty-collection silent degrade | 2 | issue #6951 |
-| 2. Silent drop | 3 | PR #6710 → #6939 |
-| 3. Config field loss (Pydantic schema) | 2 | — |
-| 4. Stale threshold source | 2 | PR #6739; superseded PR #6678 |
-| 5. Missing null-guard crash (loud, not silent) | 3 | — |
-| 6. Unsanitized input injection | 3 | — |
-| 7. Unwired config / dead setting | 3 | PR #6740 (generalized) |
-| 8. Text normalization blind spot | 2 | — |
-| 9. Type narrowing drops wrapper | 2 | — |
-| 10. Missing numeric floor | 1 | keras PR #23420 (clean match) |
-| 11. Status precedence / unconditional overwrite | 1 (weak/generalized fit) | PR #6682 (clean match) |
-| **No fit** | **6 (20%)** | — |
+| A. Silent accumulation loss (empty-collection guard, unstrict-zip drop, unconditional overwrite) | 6 | issue #6951; PR #6710→#6939; PR #6682 |
+| B. Value not consulted (stale field source, unwired config) | 5 | PR #6739 (+ superseded #6678); PR #6740 (generalized) |
+| C. Boundary strips attached data (schema field loss, type-narrowing drops wrapper) | 4 | — |
+| **In-class primary subtotal** | **15 (50%)** | |
+| D. Unsanitized input injection *(in-class, real, n<4 — not merged)* | 3 | — |
+| E. Text normalization blind spot *(in-class, real, n<4 — not merged)* | 2 | — |
+| **Out-of-class: loud crash family** (missing null guard + missing numeric floor) | 4 | — |
+| **No fit** | 6 (20%) | — |
 
-"Hardcoded polarity" (one of five seed hypotheses tested against the data) was **not confirmed** —
-zero matches among the 30, zero among the 5 PRs. 20% no-fit is under the "more than a third" weak-
-taxonomy threshold, but two shapes (10, 11) have only one benchmark member each and only read as
-real shapes because of the external PR cross-reference — see `TAXONOMY.md`'s closing caveats for
-the honest limitations of this classification.
+"Hardcoded polarity" (one of five seed hypotheses tested against the data) remains **not
+confirmed** — zero matches among the 30, zero among the 5 PRs; not presented as a counted shape.
+The keras PR #23420 match previously attached to the crash family was removed on re-examination:
+its actual mechanism (`0.0/0.0` via a tensor op) silently returns `NaN` rather than raising —
+verified directly — so it isn't a crash and doesn't belong in that shape. See `TAXONOMY.md` for
+the full mechanism verification (including three floor-less-parameter candidates directly tested
+and confirmed *not* to be crash-family members) and the honest limitations of this classification.
 
 ## Known limitations
 
