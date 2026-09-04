@@ -309,6 +309,74 @@ directly) for a case sklearn's own reference implementation defines a specific f
 exists and this function doesn't produce it" versus "the input was genuinely invalid and `NaN` is
 the standard, expected propagation" is the actual line this benchmark's target class sits on.
 
+## Near-miss: Windows MAX_PATH surfacing as a Python `ModuleNotFoundError`
+
+Not every convincing-looking "defect" traced during this project's adjacent verification work
+(`adk-tracegauge`, outside this benchmark's own `google/adk-python`-subsystem scope, recorded here
+purely as a methodology artifact — same category as the `R2Score` near-miss above) turns out to be
+a real code defect anywhere. This one is worth recording precisely because the investigator's own
+first-pass conclusion was wrong, corrected only by a second, controlled re-test — a live
+demonstration of the exact failure mode this entry documents, not just a description of it.
+
+**What was observed:** installing `google-adk[eval]` (editable, from a pinned
+`google/adk-python` checkout, no version overrides) into a fresh venv located under a long path
+(`...\AppData\Local\Temp\claude\...\scratchpad\.venv-pinned-adk\...`) and then importing
+`adk_tracegauge` (which unconditionally imports `google.adk.evaluation.metric_evaluator_registry`,
+which transitively imports the Vertex AI eval facade) failed with:
+
+```
+File "...\transports\__init__.py", line 21, in <module>
+    from .grpc_asyncio import FeatureOnlineStoreAdminServiceGrpcAsyncIOTransport
+ModuleNotFoundError: No module named 'google.cloud.aiplatform_v1.services.feature_online_store_admin_service.transports.grpc_asyncio'
+```
+
+**Wrong-but-plausible first attribution:** the `[eval]` extra's own `google-cloud-aiplatform`
+version bound (`>=1.148`, no upper bound — see `adk-tracegauge`'s own session notes) resolved to
+`2.1.0`, a major version bump from what every OTHER extra referencing the same package caps at
+(`<2`). This looked like a completely sufficient explanation — a genuinely newer, larger, more
+deeply-nested major version plausibly breaking on import — and installing with an explicit
+`google-cloud-aiplatform<2` pin (resolving `1.165.1`) appeared, at the time, to fix it. **That
+conclusion was never actually isolated as a controlled experiment** (both the "broken" and
+allegedly-"fixed" runs happened at the same long path), and it was wrong: re-tested cleanly in a
+later session with the two variables properly separated —
+
+- short install path + `google-cloud-aiplatform==2.1.0` (unpinned) → `import
+  google.cloud.aiplatform_v1.services.feature_online_store_admin_service.transports.grpc_asyncio`
+  **succeeds**.
+- long install path (the original scratchpad location) + the identical unpinned `2.1.0` → the
+  identical shape of failure reproduces immediately, this time on a *different* service module
+  (`deployment_resource_pool_service`, alphabetically earlier in `aiplatform_v1/__init__.py`'s own
+  import order — confirming this is a function of which generated submodule's path happens to
+  cross the limit first, not a fixed, version-specific failure point). The failing file's exact
+  path length: **261 characters** — one over Windows' legacy `MAX_PATH` (260).
+
+**Root cause, confirmed, not assumed:** `google-cloud-aiplatform`'s generated gRPC client tree
+nests deeply enough (`.../services/<long_service_name>/transports/grpc_asyncio.py`) that a
+sufficiently long install-path *prefix* — not any property of the package's version or code —
+pushes some generated file's absolute path past 260 characters. `CPython`'s import machinery
+reports this exact case as `ModuleNotFoundError` for the missing-looking submodule, not as an
+`OSError`/`FileNotFoundError` naming the real cause, and not as anything that mentions path length
+at all — indistinguishable, from the traceback alone, from a genuinely absent module or a broken
+package install. The version-bound inconsistency (the `[eval]` extra's missing `<2` cap) is real
+and independently verifiable in `pyproject.toml`, but it is not what caused this failure — the
+identical unpinned `2.1.0` imports cleanly at a short path.
+
+**Why this belongs in the near-miss collection:** this is precisely the "wrong-but-plausible error
+attribution" shape the collection exists to document — the error message names a specific,
+plausible-sounding cause (a missing module) that is not the real cause, and a careful
+investigator (in this case, this project's own prior session) was actually misled by it before a
+second, controlled test corrected the record. The class of defect this benchmark actually targets
+is a function *silently* producing a wrong verdict with no error at all; this is close kin but
+distinct — a LOUD error whose *attribution* is wrong, not a silent one.
+
+**Why it is a near-miss, not a benchmark positive:** it is an environment/tooling limitation (a
+Windows filesystem API constraint interacting with an install path this investigator chose), not a
+code defect in `google/adk-python`, `google-cloud-aiplatform`, or any target repo this benchmark
+scopes to. Nothing about the target code's own contract or branch coverage is at fault — the exact
+same code imports correctly given a shorter install path. Filing this against either upstream
+project would misattribute an environment property as a code defect, the same class of mistake the
+entry itself documents at one level up.
+
 ## Licensing position on the benchmark's contents
 
 `benchmark/eval_defects.jsonl` stores raw, unmodified function-body excerpts extracted directly from
