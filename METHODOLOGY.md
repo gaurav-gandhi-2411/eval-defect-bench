@@ -377,6 +377,49 @@ same code imports correctly given a shorter install path. Filing this against ei
 project would misattribute an environment property as a code defect, the same class of mistake the
 entry itself documents at one level up.
 
+## Cross-cutting lesson: an uncontrolled comparison variable, three times
+
+The MAX_PATH near-miss above was not an isolated slip — it is the third documented instance, in
+this same project, of the identical failure shape: a comparison or measurement that changed (or
+implicitly held fixed) more than the one variable it was actually trying to isolate, produced a
+specific, confident, WRONG conclusion, and that conclusion shipped until a second, deliberately
+controlled re-run caught it. Written down together because the pattern is more useful as a
+repeated shape than as three unconnected anecdotes.
+
+1. **MAX_PATH near-miss (above).** The "fix" — pinning `google-cloud-aiplatform<2` — was concluded
+   from two runs that differed in BOTH the package version AND the install-path length at once,
+   never isolated as a controlled pair. The wrong conclusion (that the version bound caused the
+   failure) shipped into a prior session's own report and was corrected only by a later run that
+   held install path fixed while varying version, and vice versa.
+
+2. **Frontier-judge localization grading (Attempt 3 above).** The first pass graded EXACT/ADJACENT/
+   WRONG localization strictly against "the mechanism the one paired historical commit happened to
+   fix" — a single, narrow reference point, implicitly treated as ground truth and never separately
+   checked against the function's own actual, current-state code. Re-adjudicating the two non-EXACT
+   positives directly against the real source (see "That strict ground truth turned out to be
+   mis-specified..." above) found both were genuine, independently-verified defects — one still
+   present, unfixed, on the current `origin/main` tip — that the first pass had scored as the judge
+   being *wrong*, purely because they didn't match the one commit paired with that function. The
+   reference point that defined "correct" was never itself validated as the right thing to compare
+   against; the correction came only from a second, controlled read against the real code, not from
+   scrutinizing the first pass's own plausibility (which looked entirely reasonable on its face).
+
+3. **AST scanner train-on-test recall (Attempt 1 above).** The reported 75% (3/4) recall measured
+   the detectors against the exact examples they were hand-built from — the "held-out" and
+   "training" sets were the same set, an uncontrolled overlap rather than a deliberately separated
+   comparison. That number meant nothing until a genuinely independent, chronologically-selected,
+   author-disjoint 30-commit set (never touched during detector construction) was run against the
+   identical, unmodified detectors — producing 0/30, the number that actually mattered.
+
+**The general lesson, stated once:** in all three cases, the WRONG result was not vague or
+obviously implausible — each looked like a clean, confident answer on its own terms, and each
+took a second, deliberately controlled re-run (not closer scrutiny of the first result) to catch.
+Before trusting any "before vs. after," "with vs. without X," or "measured on Y" comparison in this
+project's own future work: name every variable that differs between the two things being compared,
+explicitly, before trusting the delta between them. If more than the one variable under test
+differs — or the "test" and "training"/reference set are not actually independent — the comparison
+has not isolated anything, no matter how clean the resulting story reads.
+
 ## Licensing position on the benchmark's contents
 
 `benchmark/eval_defects.jsonl` stores raw, unmodified function-body excerpts extracted directly from
