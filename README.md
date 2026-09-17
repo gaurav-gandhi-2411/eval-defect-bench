@@ -116,7 +116,7 @@ cross-references, for independent verification:
 [#6739](https://github.com/google/adk-python/pull/6739),
 [#6710](https://github.com/google/adk-python/pull/6710)→[#6939](https://github.com/google/adk-python/pull/6939),
 [#6682](https://github.com/google/adk-python/pull/6682),
-[keras#23420](https://github.com/keras-team/keras/pull/23420),
+[keras#23420](https://github.com/keras-team/keras/pull/23420) (**MERGED** 2026-09-15),
 [adk-python#6951](https://github.com/google/adk-python/issues/6951).
 
 **In-class coverage (silent verdict degradation, the benchmark's actual target class): 15/30
@@ -141,6 +141,20 @@ its actual mechanism (`0.0/0.0` via a tensor op) silently returns `NaN` rather t
 verified directly — so it isn't a crash and doesn't belong in that shape. See `TAXONOMY.md` for
 the full mechanism verification (including three floor-less-parameter candidates directly tested
 and confirmed *not* to be crash-family members) and the honest limitations of this classification.
+
+**Validated positive: keras#23420 merged 2026-09-15.** One of the five external PRs behind this
+taxonomy's cross-references is now a landed fix, defended on the merits rather than accepted on
+first submission — a real defect found, fixed, contested, and settled with evidence, in a major
+framework. A reviewer (`hertschuh`, COLLABORATOR) proposed a one-line simplification
+(`1.0 - ops.divide_no_nan(self.total_mse, total)`) in place of the PR's explicit branch; the
+counter-evidence was a cross-backend regression run (numpy/tensorflow/jax/torch, identical result
+on each) showing the simplification silently reintroduces the exact bug the PR fixes on the
+*other* zero-variance case (`test_r2_zero_variance_imperfect_prediction`: `ACTUAL: array(1.,
+dtype=float32)` vs `DESIRED: array(0.)`) — `divide_no_nan` only ever inspects the denominator, so
+it can't distinguish a perfect prediction's deliberate `0/0` from a genuinely imperfect one over
+zero variance. The reviewer accepted this ("Understood. Thanks!") and approved the PR as
+originally written; the merged code (commit `f3b31e4f46`) keeps the explicit branch, not the
+suggested one-liner — confirmed directly against the merged file.
 
 ## Known limitations
 
