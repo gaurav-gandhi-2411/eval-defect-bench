@@ -377,14 +377,15 @@ same code imports correctly given a shorter install path. Filing this against ei
 project would misattribute an environment property as a code defect, the same class of mistake the
 entry itself documents at one level up.
 
-## Cross-cutting lesson: an uncontrolled comparison variable, three times
+## Cross-cutting lesson: an uncontrolled comparison variable, five times
 
-The MAX_PATH near-miss above was not an isolated slip — it is the third documented instance, in
-this same project, of the identical failure shape: a comparison or measurement that changed (or
+The MAX_PATH near-miss above was not an isolated slip — it is the first of what are now five
+documented instances, across this same project's work, of the identical failure shape: a
+comparison or measurement that changed (or
 implicitly held fixed) more than the one variable it was actually trying to isolate, produced a
 specific, confident, WRONG conclusion, and that conclusion shipped until a second, deliberately
 controlled re-run caught it. Written down together because the pattern is more useful as a
-repeated shape than as three unconnected anecdotes.
+repeated shape than as five unconnected anecdotes.
 
 1. **MAX_PATH near-miss (above).** The "fix" — pinning `google-cloud-aiplatform<2` — was concluded
    from two runs that differed in BOTH the package version AND the install-path length at once,
@@ -411,7 +412,36 @@ repeated shape than as three unconnected anecdotes.
    author-disjoint 30-commit set (never touched during detector construction) was run against the
    identical, unmodified detectors — producing 0/30, the number that actually mattered.
 
-**The general lesson, stated once:** in all three cases, the WRONG result was not vague or
+4. **#6682's "order-dependent" framing (adk-python PR, cross-referenced in "Defect taxonomy"
+   above).** The PR's own description, and this workspace's ledger entries repeating it, asserted
+   the masking bug was order-*dependent* — that `[NOT_EVALUATED, PASSED]` and
+   `[PASSED, NOT_EVALUATED]` produced *different* final statuses. Nobody had actually run both
+   orderings against unpatched upstream code before writing that down; the claim was reasoned from
+   the PR's own two test names (written as if testing an order effect) rather than checked against
+   what the *old* code actually returned for each. A maintainer's rejection ("the current behavior
+   is very much intentional") prompted a controlled re-run — the PR's own two ordering tests,
+   executed against a pinned, unpatched checkout of upstream `main` in an isolated worktree — and
+   both orderings FAILED identically, both producing `PASSED`. **The corrected finding is the
+   stronger claim, not a weaker one:** the masking isn't a corner case that depends on metric
+   ordering, it happens unconditionally whenever at least one metric passes and at least one is
+   `NOT_EVALUATED`, regardless of position. The wrong "order-dependent" framing was never
+   implausible on its face — it read as a specific, well-evidenced claim — and it took an actual
+   controlled re-run against the unpatched code, not closer reading of the original PR
+   description, to catch it.
+
+5. **Stale-ref ancestry check (this workspace's `oss-contrib/scripts/monitor_prs.py`).** A live
+   `git merge-base --is-ancestor` check against keras #23420's own merge commit returned a false
+   NO the first time it ran in a session, then YES on an identical rerun moments later — the local
+   checkout had been fetched by an earlier, unrelated code path, but the ancestor probe itself ran
+   without its own immediately-preceding fetch, so it read a ref that was already stale relative
+   to what a fresh fetch would show a moment later. Caught only because a human happened to rerun
+   the identical check and got a different answer, not because the first result looked suspicious
+   on its own — the third instance of this exact failure shape in this project's broader history
+   (not this benchmark's own investigation specifically), which prompted hardening
+   `monitor_prs.py`'s `check_ancestor` to fetch immediately before every probe and refuse to
+   report either answer on a first-vs-recheck disagreement, printing a loud warning instead.
+
+**The general lesson, stated once:** in all five cases, the WRONG result was not vague or
 obviously implausible — each looked like a clean, confident answer on its own terms, and each
 took a second, deliberately controlled re-run (not closer scrutiny of the first result) to catch.
 Before trusting any "before vs. after," "with vs. without X," or "measured on Y" comparison in this
