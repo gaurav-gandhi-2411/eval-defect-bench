@@ -450,6 +450,78 @@ explicitly, before trusting the delta between them. If more than the one variabl
 differs — or the "test" and "training"/reference set are not actually independent — the comparison
 has not isolated anything, no matter how clean the resulting story reads.
 
+A second, different failure mode — one that controlled comparisons do not protect against — is
+recorded in the next section.
+
+## A distinct failure mode: a correct measurement nobody consumed
+
+Everything above is about measurements that were WRONG: an uncontrolled variable, a mis-specified
+reference, a stale ref. The controlled re-run is the cure for those. This section records a
+different shape, found in `adk-tracegauge` (this workspace's sibling project) on 2026-09-20, for
+which a controlled re-run is no cure at all, because the measurement was already right:
+
+> **A check that reports rather than blocks produces no behaviour change.** The signal existed,
+> was correct, and reached the place it was designed to reach; nothing in the process was
+> arranged so that anyone or anything had to act on it.
+
+Three instances, with the honest fit of each (they are not identical):
+
+1. **The vendor price checker — the clean case.** `scripts/check_price_table_vs_vendor.py` compares
+   the shipped price table to each vendor's own live page. Vendor pricing changed for `gpt-5.6-sol`
+   between 2026-08-21 (last green weekly run) and 2026-08-24 (first red); the check printed the
+   exact discrepancy — `ours=$5.0/$30.0 per MTok, vendor=$4.0/$20.0 per MTok` — on **four
+   consecutive scheduled runs** (08-24, 08-31, 09-07, 09-14) and stayed red for **27 days**, until
+   fixed on 09-20. In that window `0.7.0` and `0.8.0` were both published with the wrong rate: 25%
+   over on input, 50% over on output. The measurement was right every time. A red scheduled
+   workflow is a report; nothing made a release, a merge, or a person depend on it. (An earlier
+   write-up of this incident said "three weeks" and "since 08-31"; both were wrong, and were
+   themselves repeated from a log line instead of the run history, which showed 08-24.)
+   *Separately, and not the same failure:* this checker's coverage was narrower than its name —
+   it verified input and output for 18 of 22 entries and silently skipped the two long-context
+   tiers, cached rates and promo windows. That is the coverage-gap shape from this workspace's
+   `CLAUDE.md` rule 85a, not the unconsumed-signal shape; it is kept apart here because a rewrite
+   that widened coverage (20 of 22 verified, nothing skipped silently) would still have gone
+   unread had it stayed a weekly report.
+
+2. **`pypi-canary` — a hybrid, stated as one.** Red on **five consecutive scheduled runs**
+   (2026-08-17 → 09-14, 28 days) before anyone read it. Here the red was partly *correct* (a real
+   `pythonpath` bug broke test collection) and partly a DESIGN defect that made "red" mean two
+   things: it ran `main`'s tests against the previously *published* wheel, so it went red whenever
+   `main` held a tested-but-unreleased feature (`--eval-set-file` was documented and tested on
+   `main` before it shipped). A signal whose red has two meanings trains its reader to expect the
+   benign one — a mechanism that makes non-consumption worse, on top of there being no consumer.
+   Both halves are fixed in adk-tracegauge PR #72, **which awaited human merge at the time of
+   writing** (it touches deploy config, so the merge gate routes it to a person): the canary tests
+   the tag matching the published version, and the release workflow refuses to publish while the
+   latest canary run is red.
+
+3. **The quickstart test that pinned a doubled cost — the weakest fit, stated as such.** This was
+   not an alert ignored. The correct value had been *measured and written down* — the project's
+   own audit record (`docs/audit/RELEASE_0_3_0.md`) has `mean_baseline=$0.005306` for the
+   quickstart's generator — and when the later test was authored it asserted the program's *output*
+   (`$0.010611`, exactly 2×, because the demo registered its plugin twice and every call was
+   counted twice) instead of consulting that record or recomputing it. The independent
+   measurement existed; the assertion was not built from it. It shares the shape (a correct
+   number already in hand, unconsumed at the moment it mattered) but its mechanism is closer to
+   entry 2 of the list above — a reference that defined "correct" and was never validated
+   against an independent derivation.
+
+**What the three share, and what does not cure it.** In each, a person could have read the right
+answer and did not, and in each a *stricter* or *more accurate* check would have changed nothing —
+only wiring the check into something that must pass changes behaviour. The cures that were built
+(the first is PR #72, unmerged at the time of writing; the other two are shipped):
+the release workflow `needs:` a vendor audit that fails on any mismatch, unverified entry or
+fetch failure, a 30-day freshness test, and a green latest-canary (no override input; proven to
+refuse on a deliberately stale entry and a deliberately wrong rate, and to pass on a clean tree);
+the plugin raises `DoubleRegistrationError` instead of double counting (shipped in 0.8.0); and tests assert a
+hand-derived number with the arithmetic beside it, not the output under test.
+
+**The design question this adds to the controlled-comparison discipline above.** The five entries
+above ask, of a comparison: *what differs besides the variable under test?* This asks, of a check:
+**what stops the release, the merge, or the number from being published if this is red?** A check
+with no answer to that is a report, and reports are read only when someone happens to be looking.
+Ask it when a check is written, not after it has been red for a month.
+
 ## Licensing position on the benchmark's contents
 
 `benchmark/eval_defects.jsonl` stores raw, unmodified function-body excerpts extracted directly from
