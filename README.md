@@ -156,6 +156,15 @@ zero variance. The reviewer accepted this ("Understood. Thanks!") and approved t
 originally written; the merged code (commit `f3b31e4f46`) keeps the explicit branch, not the
 suggested one-liner — confirmed directly against the merged file.
 
+## Related
+
+[adk-cost-correctness](https://github.com/gaurav-gandhi-2411/adk-cost-correctness) is a
+companion suite from the same author for a neighbouring question: whether cost-tracking plugins for
+Google ADK agents report the right cost. It uses deterministic cases with hand-computed expected
+costs and vendor-sourced prices, scored PASS / INCOMPLETE / FAIL. This benchmark asks whether a
+detector can find silent verdict-degradation defects in ADK's evaluation code; that suite asks
+whether a cost tool's numbers can be trusted. Neither one's results feed the other.
+
 ## Known limitations
 
 - **n=30 per class is small.** Point estimates computed on 30 items each have wide confidence
