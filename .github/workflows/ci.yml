@@ -1,0 +1,33 @@
+name: CI
+
+# The repo is a benchmark: JSONL data, Markdown write-ups, one stdlib-only scoring script. This checks that
+# the documents' links (relative, in-page anchors and external) resolve, every data file parses, and the
+# scoring script starts. See scripts/check_repo.py.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC: external links rot without a commit
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Links, data files and the scoring script
+        run: python scripts/check_repo.py
